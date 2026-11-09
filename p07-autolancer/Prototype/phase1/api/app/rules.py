@@ -1,4 +1,4 @@
-"""Deterministic application rules (row 8, UC-002 steps 5-6, FR-006).
+"""Deterministic application rules (row 8, UC-002 steps 5-6, FR-004, FR-006).
 
 The AI only estimates; these rules decide pursue / clarify / decline, compute the rank
 score and the pursue-eligible flag. Generated text can never make a job eligible.
@@ -10,7 +10,9 @@ from .models import Listing, PolicyVersion, Profile
 from .schemas import AIAssessment
 
 # Rank score weights (sum to 1). Score is reported on a 0-100 scale.
-WEIGHTS = {"fit": 0.40, "effort": 0.15, "deadline": 0.20, "price": 0.25}
+WEIGHTS = {"fit": 0.35, "effort": 0.15, "deadline": 0.15, "price": 0.20, "certainty": 0.15}
+# How much a job's uncertainty lowers its rank (1 = fully certain).
+CERTAINTY = {"low": 1.0, "medium": 0.6, "high": 0.2}
 HOURS_PER_DAY = 6  # owner capacity used for deadline feasibility
 MAX_EFFORT_HOURS = 160  # effort at or above this scores 0
 DECLINE_FIT, CLARIFY_FIT = 0.4, 0.6
@@ -37,18 +39,26 @@ def matches_keyword(title: str, description: str, skills: list[str], keywords: l
 
 
 def score(listing: Listing, ai: AIAssessment, policy: PolicyVersion) -> dict:
-    """Weighted score from fit, effort, deadline slack and price (each 0..1)."""
+    """Weighted score from fit, effort, deadline slack, price and certainty (each 0..1),
+    plus the expected-return basis: expected price, hours and the hourly rate they imply."""
     available = listing.deadline_days * HOURS_PER_DAY
     price_mid = min((ai.price_min + ai.price_max) / 2, listing.budget_max)
+    effort_mid = (ai.effort_hours_min + ai.effort_hours_max) / 2
     parts = {
         "fit": ai.fit,
         "effort": 1 - _clamp(ai.effort_hours_max / MAX_EFFORT_HOURS),
         "deadline": _clamp((available - ai.effort_hours_max) / available) if available > 0 else 0.0,
         "price": _clamp(price_mid / policy.max_bid),
+        "certainty": CERTAINTY[ai.uncertainty],
     }
     parts = {k: round(v, 3) for k, v in parts.items()}
     total = round(100 * sum(WEIGHTS[k] * v for k, v in parts.items()), 1)
-    return {"parts": parts, "weights": WEIGHTS, "total": total}
+    expected_return = {
+        "price": round(price_mid, 2),
+        "effort_hours": round(effort_mid, 1),
+        "hourly_rate": round(price_mid / effort_mid, 2),
+    }
+    return {"parts": parts, "weights": WEIGHTS, "total": total, "expected_return": expected_return}
 
 
 def classify(listing: Listing, ai: AIAssessment, profile: Profile, policy: PolicyVersion) -> RuleResult:
@@ -65,6 +75,8 @@ def classify(listing: Listing, ai: AIAssessment, profile: Profile, policy: Polic
         decline.append(f"Budget {listing.budget_max:.0f} is below your minimum {policy.min_job_budget:.0f}")
     if kw := matches_keyword(listing.title, listing.description, listing.skills, policy.excluded_keywords):
         decline.append(f"Matches excluded keyword '{kw}'")
+    if listing.deadline_days < policy.min_deadline_days:
+        decline.append(f"Due in {listing.deadline_days} days, under your {policy.min_deadline_days}-day deadline limit")
     if ai.effort_hours_min > listing.deadline_days * HOURS_PER_DAY:
         decline.append(
             f"Needs at least {ai.effort_hours_min:.0f}h but only {listing.deadline_days * HOURS_PER_DAY}h available before the deadline"

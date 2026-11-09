@@ -8,6 +8,7 @@ import json
 import re
 import uuid
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,8 +24,10 @@ SYSTEM_PROMPT = (
     "the owner's services, skills summary and evidence, return: category (one of finance, software, "
     "data, research, writing, other); fit from 0 to 1 for how well the owner's evidenced skills match; "
     "1-6 short fit_reasons; expected deliverables; effort_hours_min/max; a sensible price_min/max in the "
-    "listing currency; uncertainty (low/medium/high) about scope and estimates; and open_questions only "
-    "for information the owner genuinely needs from the client. Finance expertise is an extra fit "
+    "listing currency; uncertainty (low/medium/high) about scope and estimates; open_questions only "
+    "for information the owner genuinely needs from the client; assumptions your estimates rely on; and "
+    "expected_return_basis, one or two sentences on why the price is or is not worth the effort. "
+    "Finance expertise is an extra fit "
     "signal for finance jobs but must not lower fit for suitable general work. Be honest: do not "
     "overstate fit beyond the evidence."
 )
@@ -74,6 +77,9 @@ def mock_assessment(listing: Listing, profile: Profile) -> dict:
         "price_max": listing.budget_max,
         "uncertainty": "high" if len(listing.description) < 160 else ("medium" if unclear else "low"),
         "open_questions": ["Please confirm the details marked TBD."] if unclear else [],
+        "assumptions": ["Inputs and data are supplied by the client at kickoff", "One round of revisions"],
+        "expected_return_basis": f"About ${(listing.budget_min + listing.budget_max) / 2 / effort_mid:.0f}/hour "
+        f"for roughly {effort_mid:.0f} hours at the listed budget.",
     }
 
 
@@ -127,10 +133,14 @@ def assess_listing(db: Session, owner_id: uuid.UUID, listing: Listing, profile: 
         .order_by(Assessment.id.desc())
         .limit(1)
     )
+    ai = None
     if reusable is not None:
-        ai = AIAssessment.model_validate(reusable.ai_output)
-        row.reused_ai_output = True
-    else:
+        try:
+            ai = AIAssessment.model_validate(reusable.ai_output)
+            row.reused_ai_output = True
+        except ValidationError:
+            ai = None  # stored by an older output format: assess afresh instead
+    if ai is None:
         if cap_reached(db, owner_id):
             return unassessed(
                 f"Daily AI spending cap reached (${spent_today(db, owner_id):.4f} of ${daily_cap(db, owner_id):.2f})."

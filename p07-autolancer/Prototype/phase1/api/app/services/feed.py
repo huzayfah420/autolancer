@@ -92,6 +92,7 @@ def build_feed(db: Session, owner_id: uuid.UUID, filters: dict) -> dict:
         "last_fetch_at": conn.last_fetch_at,
         "last_fetch_attempt_at": conn.last_fetch_attempt_at,
         "last_fetch_error": conn.last_fetch_error,
+        "last_fetch_attempts": conn.last_fetch_attempts,
         "connected": conn.enabled and conn.status == "connected",
         "policy_version": policy.version if policy else None,
         "profile_version": profile.version,

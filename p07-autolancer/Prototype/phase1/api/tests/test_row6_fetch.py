@@ -1,5 +1,7 @@
-"""Row 6: fetch on demand, filter, store without duplicates, keep list on failure (UC-002 steps 1-2, E1, FR-005)."""
+"""Row 6: fetch on demand, filter, store without duplicates, bounded retry, keep list on failure
+(UC-002 steps 1-2, E1, FR-005)."""
 
+import httpx
 from sqlalchemy import func, select
 
 from app.models import Listing
@@ -42,20 +44,46 @@ def test_refetch_creates_no_duplicates(client, ready_a, session_factory):
 
 def test_failed_fetch_keeps_list_and_last_updated(client, ready_a, session_factory):
     feed_before = client.get("/jobs", headers=ready_a).json()
-    client.post("/sim/chaos/fail-next-fetch")
+    client.post("/sim/chaos/fail-next-fetch?count=3")  # outlasts all 3 attempts
 
     r = client.post("/jobs/fetch", headers=ready_a).json()
     assert r["fetch"]["ok"] is False and "503" in r["fetch"]["error"]
+    assert r["fetch"]["attempts"] == 3  # bounded retry, then give up
     assert r["assessment"] is None  # cycle deferred
 
     feed_after = client.get("/jobs", headers=ready_a).json()
     assert len(feed_after["items"]) == len(feed_before["items"]) == 27
     assert feed_after["last_fetch_at"] == feed_before["last_fetch_at"]
     assert feed_after["last_fetch_error"] and "503" in feed_after["last_fetch_error"]
+    assert feed_after["last_fetch_attempts"] == 3
 
     # The next fetch succeeds and clears the error.
     assert client.post("/jobs/fetch", headers=ready_a).json()["fetch"]["ok"] is True
-    assert client.get("/jobs", headers=ready_a).json()["last_fetch_error"] is None
+    after = client.get("/jobs", headers=ready_a).json()
+    assert after["last_fetch_error"] is None and after["last_fetch_attempts"] == 1
+
+
+def test_short_outage_is_recovered_by_retry(client, ready_a):
+    client.post("/sim/chaos/fail-next-fetch?count=2")
+    r = client.post("/jobs/fetch", headers=ready_a).json()["fetch"]
+    assert r["ok"] is True and r["attempts"] == 3 and r["unchanged"] == 27
+
+
+def test_unusable_response_is_not_retried(client, ready_a):
+    from app.main import app
+    from app.marketplace import get_marketplace
+    from tests.conftest import broken_marketplace
+
+    calls = []
+
+    def garbage(request):
+        calls.append(request)
+        return httpx.Response(200, json={"unexpected": True})
+
+    app.dependency_overrides[get_marketplace] = lambda: broken_marketplace(garbage)
+    r = client.post("/jobs/fetch", headers=ready_a).json()["fetch"]
+    assert r["ok"] is False and r["attempts"] == 1 and len(calls) == 1
+    assert "invalid listings response" in r["error"]
 
 
 def test_changed_and_added_listings(client, ready_a, session_factory):

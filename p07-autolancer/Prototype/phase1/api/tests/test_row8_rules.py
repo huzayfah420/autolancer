@@ -25,7 +25,8 @@ def make_listing(**kw) -> Listing:
 
 def make_ai(**kw) -> AIAssessment:
     base = dict(category="finance", fit=0.8, fit_reasons=["Matches evidence"], effort_hours_min=10, effort_hours_max=20,
-                price_min=1200, price_max=1800, uncertainty="low", open_questions=[])
+                price_min=1200, price_max=1800, uncertainty="low", open_questions=[],
+                assumptions=["Data supplied at kickoff"], expected_return_basis="About $100/hour.")
     return AIAssessment(**{**base, **kw})
 
 
@@ -33,7 +34,8 @@ PROFILE_ROW = Profile(services=["finance", "software"], skills_summary="", evide
 
 
 def policy_row(**kw) -> PolicyVersion:
-    return PolicyVersion(version=1, **{**POLICY, **kw})
+    # Built in memory, so the column default does not apply: set every field explicitly.
+    return PolicyVersion(version=1, **{"min_deadline_days": 0, **POLICY, **kw})
 
 
 # ---- Unit tests of the rules ----
@@ -55,6 +57,13 @@ def test_decline_reasons():
         r = classify(listing, ai, PROFILE_ROW, policy_row())
         assert r.classification == "decline" and not r.pursue_eligible
         assert any(reason in x for x in r.reasons), (reason, r.reasons)
+
+
+def test_deadline_limit_declines_short_jobs():
+    policy = policy_row(min_deadline_days=10)
+    r = classify(make_listing(deadline_days=7), make_ai(), PROFILE_ROW, policy)
+    assert r.classification == "decline" and any("10-day deadline limit" in x for x in r.reasons)
+    assert classify(make_listing(deadline_days=10), make_ai(), PROFILE_ROW, policy).classification == "pursue"
 
 
 def test_clarify_reasons():
@@ -88,10 +97,21 @@ def test_policy_blocks_eligibility_but_keeps_pursue():
 def test_score_is_weighted_sum():
     r = classify(make_listing(), make_ai(), PROFILE_ROW, policy_row())
     parts = r.breakdown["parts"]
-    assert set(parts) == {"fit", "effort", "deadline", "price"} and abs(sum(WEIGHTS.values()) - 1) < 1e-9
+    assert set(parts) == {"fit", "effort", "deadline", "price", "certainty"} and abs(sum(WEIGHTS.values()) - 1) < 1e-9
     assert r.score == round(100 * sum(WEIGHTS[k] * parts[k] for k in parts), 1)
     better = classify(make_listing(), make_ai(fit=0.95), PROFILE_ROW, policy_row())
     assert better.score > r.score
+
+
+def test_uncertainty_lowers_rank():
+    scores = [classify(make_listing(), make_ai(uncertainty=u), PROFILE_ROW, policy_row()).score for u in ("low", "medium", "high")]
+    assert scores[0] > scores[1] > scores[2]
+
+
+def test_expected_return_basis():
+    # Price mid 1500, effort mid 15h -> $100/hour.
+    er = classify(make_listing(), make_ai(), PROFILE_ROW, policy_row()).breakdown["expected_return"]
+    assert er == {"price": 1500, "effort_hours": 15, "hourly_rate": 100}
 
 
 # ---- Versioned re-assessment through the API ----
@@ -159,3 +179,25 @@ def test_policy_change_can_decline_stored_jobs(client, ready_a, session_factory)
     client.post("/jobs/assess", headers=ready_a)
     a = latest(session_factory, "SIM-1001")
     assert a.classification == "decline" and any("dashboard" in r for r in a.rule_reasons)
+
+
+def test_deadline_limit_change_reranks_without_ai_cost(client, ready_a, session_factory):
+    calls = model_calls(session_factory)
+    client.post("/policy", json={**POLICY, "min_deadline_days": 10}, headers=ready_a)
+    result = client.post("/jobs/assess", headers=ready_a).json()
+    assert result["reused"] == 27 and model_calls(session_factory) == calls
+    a = latest(session_factory, "SIM-1003")  # due in 7 days
+    assert a.classification == "decline" and any("deadline limit" in r for r in a.rule_reasons)
+
+
+def test_old_format_ai_output_is_reassessed_not_reused(client, ready_a, session_factory):
+    # An assessment stored before assumptions/expected_return_basis existed cannot be reused.
+    with session_factory() as db:
+        for a in db.scalars(select(Assessment)).all():
+            a.ai_output = {k: v for k, v in a.ai_output.items() if k != "expected_return_basis"}
+        db.commit()
+    calls = model_calls(session_factory)
+    client.post("/policy", json={**POLICY, "max_bid": 2500}, headers=ready_a)
+    result = client.post("/jobs/assess", headers=ready_a).json()
+    assert result["assessed"] == 27 and result["reused"] == 0
+    assert model_calls(session_factory) == calls + 27

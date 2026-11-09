@@ -9,7 +9,15 @@ from .config import get_settings
 
 
 class MarketplaceError(Exception):
-    """The marketplace could not be reached or answered with something unusable."""
+    """The marketplace could not be reached or answered with something unusable.
+
+    `retryable` is True for outages and rate limits (network errors, HTTP 5xx and 429),
+    where trying again soon may work; False for answers that will not change on retry.
+    """
+
+    def __init__(self, message: str, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class SourceClient(BaseModel):
@@ -54,9 +62,12 @@ class SimulatorAdapter:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            raise MarketplaceError(f"Marketplace returned HTTP {e.response.status_code}")
-        except (httpx.HTTPError, ValueError) as e:
-            raise MarketplaceError(f"Marketplace unreachable: {type(e).__name__}")
+            code = e.response.status_code
+            raise MarketplaceError(f"Marketplace returned HTTP {code}", retryable=code >= 500 or code == 429)
+        except httpx.HTTPError as e:
+            raise MarketplaceError(f"Marketplace unreachable: {type(e).__name__}", retryable=True)
+        except ValueError:
+            raise MarketplaceError("Marketplace sent a response that is not JSON")
 
     def capabilities(self) -> Capabilities:
         try:

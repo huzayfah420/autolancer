@@ -25,6 +25,8 @@ export type Profile = {
   evidence: Evidence[];
   pending_draft: string | null;
   pending_unsupported_claims: string[] | null;
+  // Draft claims with the evidence ids (E1 = first evidence item) that support them.
+  pending_claims: { text: string; evidence_ids: string[] }[] | null;
   updated_at: string;
 };
 
@@ -37,6 +39,7 @@ export type PolicyFields = {
   review_conditions: string[];
   min_job_budget: number;
   excluded_keywords: string[];
+  min_deadline_days: number;
 };
 
 export type Policy = PolicyFields & { version: number; created_at: string };
@@ -75,6 +78,7 @@ export type Feed = {
   last_fetch_at: string | null;
   last_fetch_attempt_at: string | null;
   last_fetch_error: string | null;
+  last_fetch_attempts: number;
   connected: boolean;
   policy_version: number | null;
   profile_version: number;
@@ -93,6 +97,8 @@ export type AIOutput = {
   price_max: number;
   uncertainty: "low" | "medium" | "high";
   open_questions: string[];
+  assumptions: string[];
+  expected_return_basis: string;
 };
 
 type Versions = { listing: number; profile: number; policy: number | null };
@@ -102,7 +108,12 @@ export type JobDetail = JobItem & {
   client: { name?: string; country?: string; rating?: number };
   posted_at: string;
   ai_output: AIOutput | null;
-  score_breakdown: { parts: Record<string, number>; weights: Record<string, number>; total: number } | null;
+  score_breakdown: {
+    parts: Record<string, number>;
+    weights: Record<string, number>;
+    total: number;
+    expected_return: { price: number; effort_hours: number; hourly_rate: number };
+  } | null;
   reused_ai_output: boolean;
   assessed_with: Versions | null;
   current_versions: Versions;

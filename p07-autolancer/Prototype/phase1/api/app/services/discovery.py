@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 import uuid
 
 from sqlalchemy import select
@@ -15,6 +16,30 @@ from .common import active_policy, get_connection
 
 class PreconditionError(Exception):
     """The action cannot run yet; the message tells the owner what to do."""
+
+
+# Bounded retry (UC-002 E1): wait this long before each extra attempt, so at most 3 attempts.
+RETRY_DELAYS_SECONDS = (1.0, 2.0)
+
+
+class FetchFailed(Exception):
+    """Every allowed attempt failed; carries the last error and how many attempts were made."""
+
+    def __init__(self, error: MarketplaceError, attempts: int):
+        self.error, self.attempts = error, attempts
+
+
+def _list_with_retry(market: SimulatorAdapter) -> tuple[list[SourceListing], int]:
+    """Fetch listings, retrying only failures that may pass (outage, rate limit)."""
+    delays = [0.0, *RETRY_DELAYS_SECONDS]
+    for attempt, delay in enumerate(delays, start=1):
+        time.sleep(delay)
+        try:
+            return market.list_listings(), attempt
+        except MarketplaceError as e:
+            if not e.retryable or attempt == len(delays):
+                raise FetchFailed(e, attempt)
+    raise AssertionError("unreachable")
 
 
 CONTENT_FIELDS = ("title", "description", "category", "budget_min", "budget_max", "currency", "deadline_days", "skills")
@@ -47,12 +72,13 @@ def fetch_jobs(db: Session, owner_id: uuid.UUID, market: SimulatorAdapter) -> di
     now = utcnow()
     conn.last_fetch_attempt_at = now
     try:
-        items = market.list_listings()
-    except MarketplaceError as e:
-        # E1: keep every stored listing and the old last_fetch_at; just record the failure.
-        conn.last_fetch_error = str(e)
+        items, attempts = _list_with_retry(market)
+    except FetchFailed as e:
+        # E1: keep every stored listing and the old last_fetch_at; record the failure and retry status.
+        conn.last_fetch_error = str(e.error)
+        conn.last_fetch_attempts = e.attempts
         db.commit()
-        return {"ok": False, "error": str(e), "last_fetch_at": conn.last_fetch_at}
+        return {"ok": False, "error": str(e.error), "attempts": e.attempts, "last_fetch_at": conn.last_fetch_at}
 
     counts = {"new": 0, "changed": 0, "unchanged": 0, "filtered_out": 0}
     for item in items:
@@ -92,5 +118,6 @@ def fetch_jobs(db: Session, owner_id: uuid.UUID, market: SimulatorAdapter) -> di
 
     conn.last_fetch_at = now
     conn.last_fetch_error = None
+    conn.last_fetch_attempts = attempts
     db.commit()
-    return {"ok": True, "error": None, "last_fetch_at": now, **counts}
+    return {"ok": True, "error": None, "attempts": attempts, "last_fetch_at": now, **counts}

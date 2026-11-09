@@ -40,23 +40,30 @@ Browser (hub) ──Supabase JS──▶ Supabase Auth            (email/passwor
 | 1 | Sign-in / sign-out | Supabase email/password. Any failure shows one generic message. The API returns the same 401 for every bad token and a 404 for another owner's job. | `hub/src/app/login`, `hub/src/components/AuthGate.tsx`, `api/app/auth.py` | `test_row1_auth.py` |
 | 2 | Connections | Turning the simulator on calls `/sim/capabilities`: **connected** + operations, or **unavailable** if the call fails or `list_listings` is missing. Turning it off leaves it **disconnected** and fetch is blocked. | `routers/connections.py`, `hub/.../connections` | `test_row2_connections.py` |
 | 3 | Profile | Services (checkboxes), skills summary, evidence (links or text). Each real change creates a new profile version. | `routers/profile.py`, `hub/.../profile` | `test_row3_profile.py` |
-| 4 | Draft my profile | One LLM call returns `{draft, unsupported_claims[]}`. The draft is kept pending until the owner accepts or ignores it. Failures show the reason, and the cost is still recorded. | `services/profile_ai.py` | `test_row4_profile_draft.py` |
-| 5 | Policy | Each valid save inserts a new `policy_versions` row (newest = active). Invalid values get a 422 and nothing is saved. The full history is shown. | `routers/policy.py`, `schemas.PolicyIn` | `test_row5_policy.py` |
-| 6 | Fetch jobs | Filters by min budget and excluded keywords, then upserts on (owner, source, source_id). A changed listing gets a new version. On failure the old list and "last updated" are kept and the error is shown. | `services/discovery.py` | `test_row6_fetch.py` |
-| 7 | Assessment | Every listing without a current assessment is assessed. A job is skipped as **unassessed** once today's `ai_usage` total reaches the cap. Each call's cost is recorded. A failed call or invalid JSON also gives **unassessed**, and the job has a Retry button. | `services/assessment.py`, `llm.py` | `test_row7_assessment.py`, `test_llm_gateway.py` |
-| 8 | Rules + rank | Python rules give pursue / clarify / decline. The score weights fit 0.40, effort 0.15, deadline 0.20 and price 0.25. Each assessment stores the listing, profile and policy versions it used, so any change makes it stale. | `rules.py` | `test_row8_rules.py` |
+| 4 | Draft my profile | One LLM call returns `{draft, claims[], unsupported_claims[]}`. Each claim cites the evidence items (E1, E2, …) behind it, and the API checks those citations: a claim with no real evidence is moved to unsupported (FR-003 AC-1). The draft is kept pending until the owner accepts or ignores it. Failures show the reason, and the cost is still recorded. | `services/profile_ai.py` | `test_row4_profile_draft.py` |
+| 5 | Policy | Allowed actions, max bid, daily proposal limit, workload limit, daily AI cap, review conditions, min job budget, excluded keywords and a deadline limit (minimum days to deadline). Each valid save inserts a new `policy_versions` row (newest = active). Invalid values get a 422 and nothing is saved. The full history is shown. | `routers/policy.py`, `schemas.PolicyIn` | `test_row5_policy.py` |
+| 6 | Fetch jobs | Filters by min budget and excluded keywords, then upserts on (owner, source, source_id). A changed listing gets a new version. Outages and rate limits (network errors, HTTP 5xx/429) are retried up to 3 attempts with 1 s and 2 s waits; other errors are not retried. If all attempts fail, the old list and "last updated" are kept, and the error and attempt count are shown. | `services/discovery.py` | `test_row6_fetch.py` |
+| 7 | Assessment | Every listing without a current assessment is assessed. The AI returns category, fit and reasons, deliverables, effort and price ranges, uncertainty, open questions, assumptions and an expected-return basis. A job is skipped as **unassessed** once today's `ai_usage` total reaches the cap. Each call's cost is recorded. A failed call or invalid JSON also gives **unassessed**, and the job has a Retry button. | `services/assessment.py`, `llm.py` | `test_row7_assessment.py`, `test_llm_gateway.py` |
+| 8 | Rules + rank | Python rules give pursue / clarify / decline. The score weights fit 0.35, effort 0.15, deadline 0.15, price 0.20 and certainty 0.15. Each assessment stores the listing, profile and policy versions it used, so any change makes it stale. | `rules.py` | `test_row8_rules.py` |
 | 9 | Jobs feed | Sorted by score, with filters, new/changed badges, a side drawer with the AI's reasons, score breakdown and versions, and a pursue-eligible flag. | `services/feed.py`, `hub/src/app/(hub)/page.tsx`, `JobDrawer.tsx` | `test_row9_feed.py` |
 
 ### Rules in short (`api/app/rules.py`)
 
 * **decline** if the category is not one of your services, fit < 0.4, the budget is below
-  your minimum, an excluded keyword matches, or the minimum effort cannot fit before the
-  deadline (6 hours/day).
+  your minimum, an excluded keyword matches, the job is due sooner than the policy's deadline
+  limit, or the minimum effort cannot fit before the deadline (6 hours/day).
 * **clarify** if there are open questions, uncertainty is high, or fit is below 0.6.
 * **pursue** otherwise. It is **pursue-eligible** only if the assessment is current, the
   policy allows `submit_proposals`, the proposal and workload limits are above 0, the lowest
   sensible price is within the max bid, and no review condition applies (high uncertainty,
   finance job, deadline under 3 days).
+
+### Rank score and expected return
+
+Each part is scored 0–1: fit (from the AI), effort (less is better, 0 at 160 hours),
+deadline slack, price (expected price relative to your max bid) and certainty (low 1.0,
+medium 0.6, high 0.2 uncertainty). The drawer also shows the expected-return basis: the AI's
+explanation plus the expected price, hours and implied hourly rate used for ranking.
 
 ### Re-assessment
 
@@ -108,12 +115,20 @@ cd ../hub && npm run lint && npm run build
 Use these to demonstrate the exception paths:
 
 ```bash
-curl -X POST http://localhost:8000/sim/chaos/fail-next-fetch         # next fetch returns 503 once
+curl -X POST "http://localhost:8000/sim/chaos/fail-next-fetch?count=1"   # one 503: the retry recovers
+curl -X POST "http://localhost:8000/sim/chaos/fail-next-fetch?count=3"   # 3 x 503: the fetch fails, old list kept
 curl -X POST http://localhost:8000/sim/chaos/edit-listing/SIM-1001   # budget +20%, description changed
 curl -X POST http://localhost:8000/sim/chaos/add-listing             # posts a brand-new job
 ```
 
 Simulator state lives in memory and resets when the API restarts.
+
+### Schema changes
+
+`create_all` creates missing tables but never adds columns to existing ones. After pulling a
+change that adds columns, delete the local SQLite file (`api/autolancer.db`). On a Supabase
+database, add the column with `alter table` or drop the six tables and restart the API, then
+run `supabase.sql` again.
 
 ## Environment variables
 

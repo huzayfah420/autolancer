@@ -7,6 +7,12 @@ import type { Evidence, Options, Profile } from "@/lib/types";
 
 type Form = Pick<Profile, "services" | "skills_summary" | "evidence">;
 
+// "E2" -> "E2: <title of the 2nd saved evidence item>".
+function evidenceLabel(profile: Profile, id: string) {
+  const item = profile.evidence[Number(id.slice(1)) - 1];
+  return item ? `${id}: ${item.title}` : id;
+}
+
 export default function ProfilePage() {
   const [options, setOptions] = useState<Options | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -129,6 +135,21 @@ export default function ProfilePage() {
         <div className="card mt-6">
           <h2 className="mb-2 text-lg font-medium">AI draft</h2>
           <p className="whitespace-pre-wrap text-sm">{profile.pending_draft}</p>
+          {!!profile.pending_claims?.length && (
+            <div className="mt-4">
+              <p className="mb-1 text-sm font-medium">Claims and the evidence behind them</p>
+              <ul className="ml-5 list-disc text-sm">
+                {profile.pending_claims.map((c) => (
+                  <li key={c.text}>
+                    {c.text}
+                    <span className="text-slate-500">
+                      {" "}— {c.evidence_ids.map((id) => evidenceLabel(profile, id)).join("; ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {!!profile.pending_unsupported_claims?.length && (
             <div className="mt-4">
               <Notice kind="warn">

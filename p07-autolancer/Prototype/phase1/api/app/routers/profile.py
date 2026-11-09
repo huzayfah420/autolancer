@@ -9,7 +9,7 @@ from ..llm import LLMError, complete_json
 from ..models import Profile, utcnow
 from ..schemas import ProfileIn
 from ..services.common import cap_reached, get_profile, record_usage
-from ..services.profile_ai import draft_args
+from ..services.profile_ai import draft_args, ground_claims
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -22,6 +22,7 @@ def profile_out(p: Profile) -> dict:
         "evidence": p.evidence,
         "pending_draft": p.pending_draft,
         "pending_unsupported_claims": p.pending_unsupported_claims,
+        "pending_claims": p.pending_claims,
         "updated_at": p.updated_at,
     }
 
@@ -64,7 +65,8 @@ def draft_profile(owner: Owner = Depends(current_owner), db: Session = Depends(g
         db.commit()
         raise HTTPException(502, f"The profile draft could not be generated: {e}")
     record_usage(db, owner.id, "profile_draft", usage, ok=True)
-    p.pending_draft, p.pending_unsupported_claims = result.draft, result.unsupported_claims
+    claims, unsupported = ground_claims(result, p)
+    p.pending_draft, p.pending_claims, p.pending_unsupported_claims = result.draft, claims, unsupported
     db.commit()
     return profile_out(p)
 
@@ -75,7 +77,7 @@ def accept_draft(owner: Owner = Depends(current_owner), db: Session = Depends(ge
     if not p.pending_draft:
         raise HTTPException(404, "There is no draft to accept.")
     p.skills_summary = p.pending_draft
-    p.pending_draft, p.pending_unsupported_claims = None, None
+    p.pending_draft, p.pending_claims, p.pending_unsupported_claims = None, None, None
     bump(p)
     db.commit()
     return profile_out(p)
@@ -85,6 +87,6 @@ def accept_draft(owner: Owner = Depends(current_owner), db: Session = Depends(ge
 def dismiss_draft(owner: Owner = Depends(current_owner), db: Session = Depends(get_db)):
     # A2: the owner keeps their own profile; the version does not change.
     p = get_profile(db, owner.id)
-    p.pending_draft, p.pending_unsupported_claims = None, None
+    p.pending_draft, p.pending_claims, p.pending_unsupported_claims = None, None, None
     db.commit()
     return profile_out(p)

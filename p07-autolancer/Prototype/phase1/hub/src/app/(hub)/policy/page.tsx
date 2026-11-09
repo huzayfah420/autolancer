@@ -15,6 +15,7 @@ const DEFAULTS: PolicyFields = {
   review_conditions: ["high_uncertainty"],
   min_job_budget: 200,
   excluded_keywords: [],
+  min_deadline_days: 0,
 };
 
 // Numeric inputs: label, field and the HTML hints (the API is still the real validator).
@@ -24,6 +25,7 @@ const NUMBERS: { field: keyof PolicyFields; label: string; step: string }[] = [
   { field: "daily_proposal_limit", label: "Daily proposal limit", step: "1" },
   { field: "workload_limit", label: "Workload limit (active projects)", step: "1" },
   { field: "daily_ai_cap_usd", label: "Daily AI spending cap (USD)", step: "0.01" },
+  { field: "min_deadline_days", label: "Minimum days to deadline (0 = no limit)", step: "1" },
 ];
 
 type History = { active: Policy | null; history: Policy[] };
@@ -133,7 +135,7 @@ export default function PolicyPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-100 text-slate-600">
               <tr>
-                {["Version", "Saved", "Max bid", "Min budget", "Proposals/day", "Workload", "AI cap", "Actions", "Review", "Excluded"].map((h) => (
+                {["Version", "Saved", "Max bid", "Min budget", "Proposals/day", "Workload", "AI cap", "Min days", "Actions", "Review", "Excluded"].map((h) => (
                   <th key={h} className="px-3 py-2 font-medium">{h}</th>
                 ))}
               </tr>
@@ -150,6 +152,7 @@ export default function PolicyPage() {
                   <td className="px-3 py-2">{p.daily_proposal_limit}</td>
                   <td className="px-3 py-2">{p.workload_limit}</td>
                   <td className="px-3 py-2">${p.daily_ai_cap_usd.toFixed(2)}</td>
+                  <td className="px-3 py-2">{p.min_deadline_days || "none"}</td>
                   <td className="px-3 py-2">{p.allowed_actions.join(", ") || "none"}</td>
                   <td className="px-3 py-2">{p.review_conditions.join(", ") || "none"}</td>
                   <td className="px-3 py-2">{p.excluded_keywords.join(", ") || "none"}</td>

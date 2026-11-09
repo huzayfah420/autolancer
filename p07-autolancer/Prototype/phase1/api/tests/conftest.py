@@ -29,6 +29,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base, get_db
 from app.main import app
 from app.marketplace import SimulatorAdapter, get_marketplace
+from app.services import discovery
 from simulator.app import reset_state
 
 PROFILE = {
@@ -76,8 +77,9 @@ def session_factory():
 
 
 @pytest.fixture
-def client(session_factory):
+def client(session_factory, monkeypatch):
     reset_state()
+    monkeypatch.setattr(discovery, "RETRY_DELAYS_SECONDS", (0, 0))  # keep retries, skip the waiting
 
     def override_db():
         db = session_factory()

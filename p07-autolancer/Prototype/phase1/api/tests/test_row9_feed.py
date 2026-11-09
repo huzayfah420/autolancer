@@ -41,7 +41,9 @@ def test_detail_shows_ai_reasons_and_versions(client, ready_a):
     job_id = feed(client, ready_a, q="13-week")["items"][0]["id"]
     d = client.get(f"/jobs/{job_id}", headers=ready_a).json()
     assert d["ai_output"]["fit_reasons"] and d["ai_output"]["deliverables"]
-    assert set(d["score_breakdown"]["parts"]) == {"fit", "effort", "deadline", "price"}
+    assert d["ai_output"]["assumptions"] and d["ai_output"]["expected_return_basis"]
+    assert set(d["score_breakdown"]["parts"]) == {"fit", "effort", "deadline", "price", "certainty"}
+    assert d["score_breakdown"]["expected_return"]["hourly_rate"] > 0
     assert d["rule_reasons"]
     assert d["assessed_with"] == d["current_versions"] == {"listing": 1, "profile": 2, "policy": 1}
     assert d["client"]["name"] and len(d["history"]) == 1

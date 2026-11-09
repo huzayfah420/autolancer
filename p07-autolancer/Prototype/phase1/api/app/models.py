@@ -44,6 +44,8 @@ class Profile(Base):
     # Last AI draft, kept until the owner accepts or dismisses it (UC-001 E3).
     pending_draft: Mapped[str | None] = mapped_column(Text, nullable=True)
     pending_unsupported_claims: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Each item: {"text": str, "evidence_ids": ["E1", ...]} - draft claims with their evidence.
+    pending_claims: Mapped[list | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -64,6 +66,7 @@ class PolicyVersion(Base):
     review_conditions: Mapped[list] = mapped_column(JSON)
     min_job_budget: Mapped[float] = mapped_column(Float)
     excluded_keywords: Mapped[list] = mapped_column(JSON)
+    min_deadline_days: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -87,6 +90,8 @@ class Connection(Base):
     last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_fetch_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_fetch_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Attempts used by the last fetch cycle (bounded retry status, UC-002 E1).
+    last_fetch_attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Listing(Base):

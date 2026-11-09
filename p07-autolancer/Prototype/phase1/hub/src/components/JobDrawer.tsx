@@ -102,6 +102,20 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
                     <ul className="ml-5 list-disc text-sm">{ai.deliverables.map((d) => <li key={d}>{d}</li>)}</ul>
                   </Section>
                 )}
+                {!!ai.assumptions.length && (
+                  <Section title="Assumptions behind the estimates">
+                    <ul className="ml-5 list-disc text-sm">{ai.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
+                  </Section>
+                )}
+                <Section title="Expected return">
+                  <p className="text-sm">{ai.expected_return_basis}</p>
+                  {job.score_breakdown && (
+                    <p className="mt-1 text-sm text-slate-500">
+                      Basis used for ranking: {money(job.score_breakdown.expected_return.price, job.currency)} for about{" "}
+                      {job.score_breakdown.expected_return.effort_hours} hours ≈ {money(job.score_breakdown.expected_return.hourly_rate, job.currency)}/hour.
+                    </p>
+                  )}
+                </Section>
                 {!!ai.open_questions.length && (
                   <Section title="Open questions for the client">
                     <ul className="ml-5 list-disc text-sm">{ai.open_questions.map((q) => <li key={q}>{q}</li>)}</ul>

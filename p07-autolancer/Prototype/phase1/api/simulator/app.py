@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 DATA_FILE = Path(__file__).with_name("jobs.json")
 
@@ -52,7 +52,7 @@ state: dict = {}
 def reset_state() -> None:
     """Restore the original listings and clear chaos flags (used by tests)."""
     state.clear()
-    state.update({"listings": _load(), "fail_next_fetch": False, "extra_index": 0})
+    state.update({"listings": _load(), "fail_fetches": 0, "extra_index": 0})
 
 
 reset_state()
@@ -68,17 +68,18 @@ async def capabilities():
 
 @sim.get("/listings")
 async def listings():
-    if state["fail_next_fetch"]:
-        state["fail_next_fetch"] = False
+    if state["fail_fetches"] > 0:
+        state["fail_fetches"] -= 1
         raise HTTPException(503, "Simulated marketplace outage")
     return {"listings": state["listings"], "generated_at": _now()}
 
 
 @sim.post("/chaos/fail-next-fetch")
-async def fail_next_fetch():
-    """The next GET /listings returns 503 once."""
-    state["fail_next_fetch"] = True
-    return {"fail_next_fetch": True}
+async def fail_next_fetch(count: int = Query(default=1, ge=1, le=10)):
+    """The next `count` GET /listings calls return 503. The API retries up to 3 times per
+    fetch, so count=1 shows a recovered retry and count=3 fails the whole fetch."""
+    state["fail_fetches"] = count
+    return {"failing_fetches": count}
 
 
 @sim.post("/chaos/edit-listing/{listing_id}")

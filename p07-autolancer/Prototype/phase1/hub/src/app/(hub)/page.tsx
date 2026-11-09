@@ -13,7 +13,7 @@ type Filters = { classification: string; category: string; status: string; eligi
 const NO_FILTERS: Filters = { classification: "", category: "", status: "", eligible_only: false, changes_only: false, q: "" };
 
 type FetchResult = {
-  fetch: { ok: boolean; error: string | null; new?: number; changed?: number; unchanged?: number; filtered_out?: number };
+  fetch: { ok: boolean; error: string | null; attempts: number; new?: number; changed?: number; unchanged?: number; filtered_out?: number };
   assessment: AssessResult | null;
 };
 type AssessResult = { assessed: number; reused: number; unassessed: number; already_current: number };
@@ -48,12 +48,12 @@ export default function JobsPage() {
     try {
       const r = await post<FetchResult>("/jobs/fetch");
       if (!r.fetch.ok) {
-        setMsg({ kind: "warn", text: `Fetch failed: ${r.fetch.error}. The previous list is kept.` });
+        setMsg({ kind: "warn", text: `Fetch failed after ${r.fetch.attempts} attempt(s): ${r.fetch.error}. The previous list is kept.` });
       } else {
         const f = r.fetch;
         setMsg({
           kind: "ok",
-          text: `Fetched: ${f.new} new, ${f.changed} changed, ${f.unchanged} unchanged, ${f.filtered_out} filtered out. ${r.assessment ? assessText(r.assessment) : ""}`,
+          text: `Fetched${f.attempts > 1 ? ` (succeeded on attempt ${f.attempts})` : ""}: ${f.new} new, ${f.changed} changed, ${f.unchanged} unchanged, ${f.filtered_out} filtered out. ${r.assessment ? assessText(r.assessment) : ""}`,
         });
       }
     } catch (e) {
@@ -124,7 +124,7 @@ export default function JobsPage() {
       )}
       {feed?.last_fetch_error && (
         <Notice kind="warn">
-          The last fetch ({when(feed.last_fetch_attempt_at)}) failed: {feed.last_fetch_error}. Showing the list from {when(feed.last_fetch_at)}.
+          The last fetch ({when(feed.last_fetch_attempt_at)}) failed after {feed.last_fetch_attempts} attempt(s): {feed.last_fetch_error}. Showing the list from {when(feed.last_fetch_at)}.
         </Notice>
       )}
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}

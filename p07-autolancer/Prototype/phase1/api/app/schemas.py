@@ -67,6 +67,8 @@ class PolicyIn(BaseModel):
     review_conditions: list[str] = Field(default_factory=list, max_length=len(REVIEW_CONDITIONS))
     min_job_budget: float = Field(ge=0, le=1_000_000)
     excluded_keywords: list[str] = Field(default_factory=list, max_length=50)
+    # Deadline limit (FR-004): jobs due sooner than this are declined. 0 = no limit.
+    min_deadline_days: int = Field(default=0, ge=0, le=365)
 
     @field_validator("allowed_actions")
     @classmethod
@@ -108,10 +110,18 @@ class ConnectionToggle(BaseModel):
 
 # ---- AI output contracts (validated; anything else = invalid output) ----
 
+class DraftClaim(BaseModel):
+    """One claim made in the draft and the evidence items (E1, E2, ...) that support it."""
+
+    text: str = Field(min_length=1, max_length=300)
+    evidence_ids: list[str] = Field(min_length=1, max_length=10)
+
+
 class AIProfileDraft(BaseModel):
-    """Output of "Draft my profile" (AIR-002)."""
+    """Output of "Draft my profile" (AIR-002, FR-003 AC-1: claims link to their evidence)."""
 
     draft: str = Field(min_length=1, max_length=4000)
+    claims: list[DraftClaim] = Field(default_factory=list, max_length=20)
     unsupported_claims: list[str] = Field(default_factory=list, max_length=20)
 
 
@@ -128,6 +138,9 @@ class AIAssessment(BaseModel):
     price_max: float = Field(ge=0, le=1_000_000)
     uncertainty: Literal["low", "medium", "high"]
     open_questions: list[str] = Field(default_factory=list, max_length=10)
+    # Things the estimates take for granted, and why the job is (or is not) worth the money.
+    assumptions: list[str] = Field(default_factory=list, max_length=10)
+    expected_return_basis: str = Field(min_length=1, max_length=500)
 
     @model_validator(mode="after")
     def ranges_ordered(self):

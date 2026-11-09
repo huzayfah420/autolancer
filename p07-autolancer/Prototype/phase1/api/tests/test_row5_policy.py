@@ -15,6 +15,12 @@ def test_each_save_creates_a_new_active_version(client, owner_a):
     assert body["active"]["version"] == 2 and body["active"]["max_bid"] == 1500
     assert [p["version"] for p in body["history"]] == [2, 1]
     assert body["history"][1]["max_bid"] == 3000  # older version stays inspectable
+    assert body["active"]["min_deadline_days"] == 0  # deadline limit defaults to "no limit"
+
+
+def test_deadline_limit_is_saved(client, owner_a):
+    p = client.post("/policy", json={**POLICY, "min_deadline_days": 7}, headers=owner_a).json()
+    assert p["min_deadline_days"] == 7
 
 
 def test_values_are_normalised(client, owner_a):
@@ -40,6 +46,8 @@ def test_values_are_normalised(client, owner_a):
         {"allowed_actions": ["delete_everything"]},
         {"review_conditions": ["never"]},
         {"excluded_keywords": ["  "]},
+        {"min_deadline_days": -1},
+        {"min_deadline_days": 1000},
         {"max_bid": "lots"},
         {"unexpected_field": True},
     ],
