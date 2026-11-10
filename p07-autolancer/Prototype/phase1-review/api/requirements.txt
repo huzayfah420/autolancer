@@ -1,0 +1,11 @@
+# Autolancer Phase 1 API dependencies (versions follow the architecture doc).
+fastapi==0.162.*
+uvicorn[standard]==0.54.*
+sqlalchemy==2.1.*
+pydantic==2.14.*
+pydantic-settings==2.16.*
+psycopg[binary]==3.3.*
+httpx==0.28.*
+pyjwt[crypto]==2.15.*
+litellm==1.106.*
+pytest==9.2.*
