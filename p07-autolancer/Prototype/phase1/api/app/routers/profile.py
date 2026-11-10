@@ -45,6 +45,8 @@ def save_profile(body: ProfileIn, owner: Owner = Depends(current_owner), db: Ses
     # Only a real change creates a new version, so re-saving does not trigger re-assessment.
     if (p.services, p.skills_summary, p.evidence) != (new["services"], new["skills_summary"], new["evidence"]):
         p.services, p.skills_summary, p.evidence = new["services"], new["skills_summary"], new["evidence"]
+        # The pending draft cites evidence by position (E1, E2, ...) in the old profile.
+        p.pending_draft, p.pending_claims, p.pending_unsupported_claims = None, None, None
         bump(p)
         db.commit()
     return profile_out(p)

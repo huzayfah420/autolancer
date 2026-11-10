@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     # Daily AI cap used only before the owner has saved any policy version.
     default_daily_ai_cap_usd: float = 0.50
 
+    # Budget reserved for one model call before it starts (NFR-011): a call is refused when
+    # today's spend plus this reservation would pass the daily cap. Mock calls reserve their
+    # fixed mock cost instead.
+    llm_call_reserve_usd: float = 0.02
+    # Hard ceiling on output tokens per call (SEC-005).
+    llm_max_output_tokens: int = 1500
+    # Used to cost a call when the provider's price is unknown, so an unpriced model can
+    # never spend without counting against the cap (FR-026 AC-2). USD per 1,000 tokens.
+    llm_fallback_usd_per_1k_tokens: float = 0.01
+
+    # When true, only sessions that completed MFA (Supabase `aal2`) are accepted (SEC-001).
+    require_mfa: bool = False
+
     # Comma-separated origins allowed to call the API from a browser (the hub).
     cors_origins: str = "http://localhost:3000"
 

@@ -34,6 +34,12 @@ class LLMError(Exception):
         self.usage = usage
 
 
+def call_reserve_usd() -> float:
+    """Worst-case cost set aside for one call before it is made (NFR-011)."""
+    settings = get_settings()
+    return MOCK_COST_USD if settings.llm_model == "mock" else settings.llm_call_reserve_usd
+
+
 def _strip_fences(text: str) -> str:
     # Some models wrap JSON in ```json fences even in JSON mode.
     text = text.strip()
@@ -68,6 +74,7 @@ def complete_json[T: BaseModel](
             response_format={"type": "json_object"},
             temperature=0,
             timeout=settings.llm_timeout_seconds,
+            max_tokens=settings.llm_max_output_tokens,
             num_retries=1,
         )
     except Exception as e:
@@ -78,7 +85,10 @@ def complete_json[T: BaseModel](
     try:
         usage.cost_usd = float(litellm.completion_cost(completion_response=resp) or 0.0)
     except Exception:
-        usage.cost_usd = 0.0  # unknown price for this model; tokens are still recorded
+        usage.cost_usd = 0.0
+    if usage.cost_usd <= 0 and (usage.input_tokens or usage.output_tokens):
+        # Unknown price: charge a conservative estimate so the daily cap still applies.
+        usage.cost_usd = (usage.input_tokens + usage.output_tokens) / 1000 * settings.llm_fallback_usd_per_1k_tokens
 
     try:
         content = resp.choices[0].message.content or ""

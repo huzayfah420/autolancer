@@ -62,6 +62,8 @@ export type JobItem = {
   version: number;
   is_new: boolean;
   is_changed: boolean;
+  // Not returned by the marketplace in the last successful fetch; never pursue-eligible.
+  is_closed: boolean;
   status: JobStatus;
   unassessed_reason: string | null;
   classification: Classification | null;

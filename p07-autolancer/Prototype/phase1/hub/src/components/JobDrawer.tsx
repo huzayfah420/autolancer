@@ -26,6 +26,13 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
     get<JobDetail>(`/jobs/${id}`).then(setJob).catch((e) => setError(e.message));
   }, [id]);
 
+  // Escape closes the drawer, and focus moves into it when it opens (NFR-010).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function retry() {
     setBusy(true);
     setError(null);
@@ -42,8 +49,9 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
   const ai = job?.ai_output;
   return (
     <div className="fixed inset-0 z-20 flex justify-end bg-black/30" onClick={onClose}>
-      <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <button className="float-right text-sm text-slate-500 hover:text-slate-900" onClick={onClose}>Close ✕</button>
+      <aside role="dialog" aria-modal="true" aria-label={job?.title ?? "Job details"}
+        className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <button autoFocus className="float-right text-sm text-slate-500 hover:text-slate-900" onClick={onClose}>Close ✕</button>
         {error && <Notice kind="error">{error}</Notice>}
         {!job ? (
           <p className="text-sm text-slate-500">Loading…</p>

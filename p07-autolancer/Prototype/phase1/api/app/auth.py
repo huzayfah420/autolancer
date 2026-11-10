@@ -46,6 +46,8 @@ def current_owner(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) 
         raise unauthorized
     try:
         claims = decode_token(creds.credentials)
+        if get_settings().require_mfa and claims.get("aal") != "aal2":
+            raise jwt.InvalidTokenError("MFA required")
         return Owner(id=uuid.UUID(claims["sub"]), email=claims.get("email"))
     except Exception:  # bad signature, expired, wrong audience, missing sub, JWKS down...
         raise unauthorized

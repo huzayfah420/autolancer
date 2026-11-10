@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..llm import Usage
+from ..llm import Usage, call_reserve_usd
 from ..models import AIUsage, Connection, PolicyVersion, Profile
 
 SIMULATOR = "simulator"
@@ -59,7 +59,13 @@ def spent_today(db: Session, owner_id: uuid.UUID) -> float:
 
 
 def cap_reached(db: Session, owner_id: uuid.UUID) -> bool:
-    return spent_today(db, owner_id) >= daily_cap(db, owner_id)
+    """True when one more model call could take today's spend past the cap.
+
+    The call's reservation is counted before it starts, so the cap is never overshot by
+    the last call (NFR-011). Phase 1 runs calls one at a time per request; a worker that
+    runs them in parallel must take this check and the reservation under one row lock.
+    """
+    return spent_today(db, owner_id) + call_reserve_usd() > daily_cap(db, owner_id) + 1e-9
 
 
 def record_usage(

@@ -1,4 +1,4 @@
-"""Tests for the changes made in phase1-review (see ../REVIEW.md, part C)."""
+"""Tests for the changes made in phase1-review (see Prototype/phase1-review/REVIEW.md, part C)."""
 
 import jwt
 import pytest

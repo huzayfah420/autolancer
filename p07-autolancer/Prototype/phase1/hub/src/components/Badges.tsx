@@ -23,6 +23,11 @@ export function Markers({ job }: { job: JobItem }) {
     <>
       {job.is_new && <span className="badge ml-1 bg-blue-100 text-blue-800">new</span>}
       {job.is_changed && <span className="badge ml-1 bg-violet-100 text-violet-800">changed</span>}
+      {job.is_closed && (
+        <span className="badge ml-1 bg-red-100 text-red-800" title="No longer listed on the marketplace as of the last fetch">
+          closed
+        </span>
+      )}
       {job.simulated && <span className="badge ml-1 bg-slate-100 text-slate-500">simulated</span>}
     </>
   );

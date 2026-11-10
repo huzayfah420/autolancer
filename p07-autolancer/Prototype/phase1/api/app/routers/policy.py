@@ -4,8 +4,9 @@ Policies are append-only: each valid save inserts a new version and the newest i
 Invalid input fails Pydantic validation (422) and nothing is written.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import Owner, current_owner
@@ -38,5 +39,10 @@ def save_policy(body: PolicyIn, owner: Owner = Depends(current_owner), db: Sessi
     current = active_policy(db, owner.id)
     row = PolicyVersion(owner_id=owner.id, version=(current.version + 1 if current else 1), **body.model_dump())
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two saves raced for the same version number; nothing was written for this one.
+        db.rollback()
+        raise HTTPException(409, "The policy changed while you were saving. Reload and try again.")
     return policy_out(row)

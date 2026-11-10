@@ -8,9 +8,14 @@ def feed(client, headers, **params):
     return client.get("/jobs", headers=headers, params=params).json()
 
 
-def test_sorted_by_score_descending(client, ready_a):
-    scores = [j["score"] for j in feed(client, ready_a)["items"]]
-    assert scores == sorted(scores, reverse=True)
+def test_ranked_by_decision_then_score(client, ready_a):
+    items = feed(client, ready_a)["items"]
+    # Pursue jobs first, then clarify, then decline; highest score first inside each group.
+    tiers = [["pursue", "clarify", "decline"].index(j["classification"]) for j in items]
+    assert tiers == sorted(tiers)
+    for name in ("pursue", "clarify", "decline"):
+        scores = [j["score"] for j in items if j["classification"] == name]
+        assert scores and scores == sorted(scores, reverse=True)
 
 
 def test_filters(client, ready_a):

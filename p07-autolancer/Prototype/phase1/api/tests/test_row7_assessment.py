@@ -23,15 +23,18 @@ def test_every_new_job_is_assessed_and_costed(client, ready_a, session_factory):
 
 
 def test_over_cap_jobs_become_unassessed(client, owner_a, session_factory):
-    # Mock calls cost $0.001 each, so the cap is hit after 3 calls.
+    # Mock calls cost $0.001 each and reserve that much before they start, so a third call
+    # (which would take spend to $0.003) is refused: the cap is never overshot (NFR-011).
     setup_owner(client, owner_a, policy={**POLICY, "daily_ai_cap_usd": 0.0025})
     result = client.post("/jobs/fetch", headers=owner_a).json()["assessment"]
-    assert result["assessed"] == 3 and result["unassessed"] == 24
-    assert len(usage_rows(session_factory)) == 3  # no model call once the cap is reached
+    assert result["assessed"] == 2 and result["unassessed"] == 25
+    rows = usage_rows(session_factory)
+    assert len(rows) == 2  # no model call once the next one would pass the cap
+    assert sum(r.cost_usd for r in rows) <= 0.0025
 
     items = client.get("/jobs", headers=owner_a).json()["items"]
     unassessed = [j for j in items if j["status"] == "unassessed"]
-    assert len(unassessed) == 24
+    assert len(unassessed) == 25
     assert all("cap reached" in j["unassessed_reason"] for j in unassessed)
     assert not any(j["pursue_eligible"] for j in unassessed)
 

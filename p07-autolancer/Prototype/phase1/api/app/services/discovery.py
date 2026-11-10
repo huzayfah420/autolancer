@@ -82,13 +82,6 @@ def fetch_jobs(db: Session, owner_id: uuid.UUID, market: SimulatorAdapter) -> di
 
     counts = {"new": 0, "changed": 0, "unchanged": 0, "filtered_out": 0}
     for item in items:
-        # Job filters from the active policy.
-        if item.budget_max < policy.min_job_budget or matches_keyword(
-            item.title, item.description, item.skills, policy.excluded_keywords
-        ):
-            counts["filtered_out"] += 1
-            continue
-
         fields = item.model_dump(exclude={"id"})
         digest = content_hash(item)
         existing = db.scalar(
@@ -96,6 +89,16 @@ def fetch_jobs(db: Session, owner_id: uuid.UUID, market: SimulatorAdapter) -> di
                 Listing.owner_id == owner_id, Listing.source == market.provider, Listing.source_id == item.id
             )
         )
+        # Job filters from the active policy. They only stop NEW listings being stored: one
+        # we already hold is still refreshed, so it never shows outdated content or looks
+        # closed. The same limits are rules in rules.py, which then decline it.
+        filtered = item.budget_max < policy.min_job_budget or bool(
+            matches_keyword(item.title, item.description, item.skills, policy.excluded_keywords)
+        )
+        if filtered and existing is None:
+            counts["filtered_out"] += 1
+            continue
+
         if existing is None:
             db.add(
                 Listing(

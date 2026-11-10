@@ -10,7 +10,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+import os
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
 DATA_FILE = Path(__file__).with_name("jobs.json")
 
@@ -60,6 +62,13 @@ reset_state()
 sim = FastAPI(title="Autolancer Marketplace Simulator", version="1.0")
 
 
+def chaos_guard(x_sim_token: str | None = Header(default=None)) -> None:
+    """Chaos endpoints change what every owner sees, so a deployment can lock them."""
+    expected = os.environ.get("SIMULATOR_CHAOS_TOKEN", "")
+    if expected and x_sim_token != expected:
+        raise HTTPException(403, "Chaos endpoints are locked")
+
+
 @sim.get("/capabilities")
 async def capabilities():
     """What this marketplace account can do. Phase 1 only needs list_listings."""
@@ -74,7 +83,7 @@ async def listings():
     return {"listings": state["listings"], "generated_at": _now()}
 
 
-@sim.post("/chaos/fail-next-fetch")
+@sim.post("/chaos/fail-next-fetch", dependencies=[Depends(chaos_guard)])
 async def fail_next_fetch(count: int = Query(default=1, ge=1, le=10)):
     """The next `count` GET /listings calls return 503. The API retries up to 3 times per
     fetch, so count=1 shows a recovered retry and count=3 fails the whole fetch."""
@@ -82,7 +91,7 @@ async def fail_next_fetch(count: int = Query(default=1, ge=1, le=10)):
     return {"failing_fetches": count}
 
 
-@sim.post("/chaos/edit-listing/{listing_id}")
+@sim.post("/chaos/edit-listing/{listing_id}", dependencies=[Depends(chaos_guard)])
 async def edit_listing(listing_id: str):
     """Change a listing's budget and description, as a client edit would."""
     for item in state["listings"]:
@@ -94,7 +103,7 @@ async def edit_listing(listing_id: str):
     raise HTTPException(404, "Listing not found")
 
 
-@sim.post("/chaos/add-listing", status_code=201)
+@sim.post("/chaos/add-listing", status_code=201, dependencies=[Depends(chaos_guard)])
 async def add_listing():
     """Post a brand-new listing (cycles through EXTRA_LISTINGS)."""
     i = state["extra_index"]

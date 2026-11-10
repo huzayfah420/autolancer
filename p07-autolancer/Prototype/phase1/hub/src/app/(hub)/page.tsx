@@ -172,7 +172,11 @@ export default function JobsPage() {
                 <tr key={j.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setSelected(j.id)}>
                   <td className="px-3 py-2 font-mono">{j.score ?? "—"}</td>
                   <td className="px-3 py-2">
-                    <span className="font-medium">{j.title}</span>
+                    {/* A real button, so the drawer opens from the keyboard too (NFR-010). */}
+                    <button type="button" className="text-left font-medium hover:underline"
+                      onClick={(e) => { e.stopPropagation(); setSelected(j.id); }}>
+                      {j.title}
+                    </button>
                     <Markers job={j} />
                     {j.status === "unassessed" && <div className="text-xs text-red-700">{j.unassessed_reason}</div>}
                   </td>

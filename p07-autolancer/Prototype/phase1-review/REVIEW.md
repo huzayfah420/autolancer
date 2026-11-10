@@ -3,9 +3,9 @@
 Reviewed on 2026-11-10 against the goal of an automatic freelancer that hunts for work,
 builds it and deals with the outside world on its own.
 
-Nothing under `Prototype/phase1/` or in the `.docx` files was edited. This folder is a
-copy of `phase1/` with the fixes from Part C applied; `diff -ru ../phase1 .` shows every
-change. Part D lists them.
+The `.docx` files were not edited. The fixes in Part C were first made in a separate copy
+of the prototype and have since been ported into `Prototype/phase1/`; the copy was then
+removed, so this folder now holds only this review. Part D lists the changed files.
 
 ## Documents and precedence
 
@@ -252,12 +252,12 @@ Baseline: 91 API tests pass; the hub passes ESLint and `next build`.
 - Failed and invalid model calls are still written to the cost ledger.
 - Tests are named by prototype row and drive the simulator over real HTTP.
 
-### C2. Defects found and fixed in this folder
+### C2. Defects found and fixed
 
-Each was reproduced against `phase1/` before fixing, and has a test in
-`api/tests/test_review_fixes.py`.
+Each was reproduced against the original `phase1/` code before fixing, and has a test in
+`phase1/api/tests/test_review_fixes.py`.
 
-| # | Defect in `phase1/` | Effect | Fix here |
+| # | Defect in the original code | Effect | Fix |
 |---|---|---|---|
 | 1 | A listing that disappears from the marketplace stays in the feed as pursue-eligible (`services/feed.py`, `services/discovery.py`). | In Phase 2 the system would bid on closed jobs (UC-003 E1). | Listings not returned by the last successful fetch are marked `is_closed`, lose eligibility and sink to the bottom. A failed fetch closes nothing. |
 | 2 | A stored listing that the policy filters later exclude is skipped on fetch and never refreshed (`discovery.py`). | It shows outdated content indefinitely. | Filters now stop only new listings; known ones are refreshed and then declined by the rules. |
@@ -277,7 +277,7 @@ Two existing tests changed because the behaviour changed on purpose: the cap tes
 expects 2 calls rather than 3 (defect 4), and the feed-order test checks decision tier
 and then score (defect 3).
 
-### C3. Gaps against the architecture, not fixed here
+### C3. Gaps against the architecture, not fixed
 
 These are design work for Phase 2 rather than bugs.
 
@@ -314,10 +314,10 @@ These are design work for Phase 2 rather than bugs.
 
 ---
 
-## Part D. What is in this folder
+## Part D. What changed in `phase1/`
 
-`api/` and `hub/` are complete copies of `phase1/`, so the folder runs on its own with
-the same commands and environment variables. Changed files:
+The prototype runs with the same commands and environment variables as before. Changed
+files, relative to `Prototype/phase1/`:
 
 - API: `app/auth.py`, `app/config.py`, `app/llm.py`, `app/rules.py`,
   `app/routers/policy.py`, `app/routers/profile.py`, `app/services/assessment.py`,
@@ -328,9 +328,9 @@ the same commands and environment variables. Changed files:
 - Hub: `src/app/(hub)/page.tsx`, `src/components/Badges.tsx`,
   `src/components/JobDrawer.tsx`, `src/lib/types.ts`
 
-No database columns were added, so this copy runs against an existing Phase 1 database.
+No database columns were added, so the code runs against an existing Phase 1 database.
 
-Verification run here: `pytest` in `api/` gives 105 passed; in `hub/`, `eslint`,
+Verification: `pytest` in `api/` gives 105 passed; in `hub/`, `eslint`,
 `tsc --noEmit` and `next build` are clean. The hub changes were not exercised in a
 browser, and nothing was run against a real model, Supabase or a deployed host.
 

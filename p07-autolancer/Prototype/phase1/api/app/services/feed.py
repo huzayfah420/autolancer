@@ -20,6 +20,19 @@ def same_instant(a: datetime | None, b: datetime | None) -> bool:
     return a == b
 
 
+# Feed order: jobs worth pursuing first, then ones needing clarification, then declined ones;
+# jobs with no result last. Within a tier the higher score wins.
+TIER = {"pursue": 0, "clarify": 1, "decline": 2}
+
+
+def is_closed(listing: Listing, last_fetch_at: datetime | None) -> bool:
+    """A listing the marketplace no longer returned in the last successful fetch.
+
+    It may be closed or awarded elsewhere, so it must not stay pursue-eligible (UC-003 E1).
+    """
+    return last_fetch_at is not None and not same_instant(listing.last_seen_at, last_fetch_at)
+
+
 def job_status(latest: Assessment | None, current: bool) -> str:
     """pending = never assessed, stale = inputs changed since, unassessed = failed/skipped."""
     if latest is None:
@@ -34,6 +47,7 @@ def summarize(listing: Listing, latest: Assessment | None, current: bool, last_f
     has_result = latest is not None and latest.status == "assessed"
     ai = latest.ai_output if has_result else None
     is_new = same_instant(listing.first_seen_at, last_fetch_at)
+    closed = is_closed(listing, last_fetch_at)
     return {
         "id": listing.id,
         "source_id": listing.source_id,
@@ -49,6 +63,7 @@ def summarize(listing: Listing, latest: Assessment | None, current: bool, last_f
         "version": listing.version,
         "is_new": is_new,
         "is_changed": not is_new and same_instant(listing.changed_at, last_fetch_at),
+        "is_closed": closed,
         "status": status,
         "unassessed_reason": latest.unassessed_reason if status == "unassessed" else None,
         # Results of a stale assessment are still shown, but labelled and never eligible.
@@ -56,7 +71,7 @@ def summarize(listing: Listing, latest: Assessment | None, current: bool, last_f
         "score": latest.score if has_result else None,
         "fit": ai["fit"] if ai else None,
         "uncertainty": ai["uncertainty"] if ai else None,
-        "pursue_eligible": bool(current and latest.pursue_eligible),
+        "pursue_eligible": bool(current and latest.pursue_eligible and not closed),
         "rule_reasons": latest.rule_reasons if has_result else [],
     }
 
@@ -83,8 +98,7 @@ def build_feed(db: Session, owner_id: uuid.UUID, filters: dict) -> dict:
         and (not filters.get("changes_only") or i["is_new"] or i["is_changed"])
         and (not q or q in i["title"].lower() or any(q in s.lower() for s in i["skills"]))
     ]
-    # Highest score first; jobs without a score go last.
-    items.sort(key=lambda i: (i["score"] is None, -(i["score"] or 0), i["id"]))
+    items.sort(key=lambda i: (i["is_closed"], TIER.get(i["classification"], 3), -(i["score"] or 0), i["id"]))
 
     return {
         "items": items,

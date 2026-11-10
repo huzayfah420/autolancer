@@ -4,6 +4,7 @@ The AI only estimates; these rules decide pursue / clarify / decline, compute th
 score and the pursue-eligible flag. Generated text can never make a job eligible.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from .models import Listing, PolicyVersion, Profile
@@ -36,6 +37,26 @@ def matches_keyword(title: str, description: str, skills: list[str], keywords: l
     """First excluded keyword found in the job text (case-insensitive), else None."""
     text = f"{title} {description} {' '.join(skills)}".lower()
     return next((kw for kw in keywords if kw in text), None)
+
+
+# Phrases that address the AI or try to move the deal off the marketplace. A listing that
+# contains one can still be assessed and ranked, but is always held for the owner (SEC-003).
+INSTRUCTION_PATTERNS = [
+    r"ignore (all |any |the )?(previous|prior|above|earlier) (instructions|rules|prompts?)",
+    r"disregard (all |any |the )?(previous|prior|above|earlier)",
+    r"system prompt",
+    r"you are (now )?(an? )?(ai|assistant|language model|llm|chatbot)",
+    r"as an ai\b",
+    r"(set|return|rate|give|assign)\b.{0,30}\b(fit|score|uncertainty)\b.{0,15}\b(to|of|as)\b",
+    r"(contact|message|reach|email|dm) (me|us)\b.{0,40}\b(whatsapp|telegram|skype|discord|outside|off[- ]platform|directly at)",
+]
+_INSTRUCTION_RE = re.compile("|".join(f"(?:{p})" for p in INSTRUCTION_PATTERNS), re.I | re.S)
+
+
+def instruction_like(title: str, description: str) -> str | None:
+    """The first instruction-like phrase found in the listing text, else None."""
+    m = _INSTRUCTION_RE.search(f"{title}\n{description}")
+    return m.group(0)[:60] if m else None
 
 
 def score(listing: Listing, ai: AIAssessment, policy: PolicyVersion) -> dict:
@@ -98,6 +119,8 @@ def classify(listing: Listing, ai: AIAssessment, profile: Profile, policy: Polic
     # Pursue: now check whether policy lets the system pursue it without the owner.
     reasons.append("Supported service with good fit and a feasible deadline")
     blockers = []
+    if phrase := instruction_like(listing.title, listing.description):
+        blockers.append(f"Review required: the listing contains instruction-like text (\"{phrase}\")")
     if "submit_proposals" not in policy.allowed_actions:
         blockers.append("Policy does not allow submitting proposals")
     if policy.daily_proposal_limit == 0:
