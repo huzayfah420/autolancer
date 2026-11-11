@@ -103,6 +103,16 @@ async def edit_listing(listing_id: str):
     raise HTTPException(404, "Listing not found")
 
 
+@sim.post("/chaos/remove-listing/{listing_id}", dependencies=[Depends(chaos_guard)])
+async def remove_listing(listing_id: str):
+    """Take a listing down, as when the client closes it or awards it to someone else."""
+    before = len(state["listings"])
+    state["listings"] = [item for item in state["listings"] if item["id"] != listing_id]
+    if len(state["listings"]) == before:
+        raise HTTPException(404, "Listing not found")
+    return {"removed": listing_id}
+
+
 @sim.post("/chaos/add-listing", status_code=201, dependencies=[Depends(chaos_guard)])
 async def add_listing():
     """Post a brand-new listing (cycles through EXTRA_LISTINGS)."""

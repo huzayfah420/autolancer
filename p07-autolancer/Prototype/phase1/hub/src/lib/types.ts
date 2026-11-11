@@ -82,6 +82,7 @@ export type Feed = {
   last_fetch_error: string | null;
   last_fetch_attempts: number;
   connected: boolean;
+  connection_status: "connected" | "unavailable" | "disconnected";
   policy_version: number | null;
   profile_version: number;
   ai_spent_today: number;

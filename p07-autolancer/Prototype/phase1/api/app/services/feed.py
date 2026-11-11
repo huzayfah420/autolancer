@@ -108,6 +108,7 @@ def build_feed(db: Session, owner_id: uuid.UUID, filters: dict) -> dict:
         "last_fetch_error": conn.last_fetch_error,
         "last_fetch_attempts": conn.last_fetch_attempts,
         "connected": conn.enabled and conn.status == "connected",
+        "connection_status": conn.status,
         "policy_version": policy.version if policy else None,
         "profile_version": profile.version,
         "ai_spent_today": round(spent_today(db, owner_id), 6),

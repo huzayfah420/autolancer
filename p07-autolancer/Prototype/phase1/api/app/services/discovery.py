@@ -54,6 +54,8 @@ def content_hash(item: SourceListing) -> str:
 def require_marketplace(db: Session, owner_id: uuid.UUID, operation: str):
     """Stop the action unless the connection is enabled and supports the operation (FR-002 AC-2)."""
     conn = get_connection(db, owner_id)
+    if conn.enabled and conn.status == "unavailable":
+        raise PreconditionError("The Marketplace Simulator is unavailable. Use “Try again” on the Connections page.")
     if not conn.enabled or conn.status != "connected":
         raise PreconditionError("The Marketplace Simulator is not connected. Connect it on the Connections page.")
     if operation not in conn.operations:
@@ -118,6 +120,12 @@ def fetch_jobs(db: Session, owner_id: uuid.UUID, market: SimulatorAdapter) -> di
         else:
             existing.last_seen_at = now
             counts["unchanged"] += 1
+
+    # Listings we hold that this fetch did not return: closed or awarded elsewhere (UC-003 E1).
+    db.flush()
+    held = db.scalars(select(Listing.source_id).where(Listing.owner_id == owner_id, Listing.source == market.provider)).all()
+    returned = {item.id for item in items}
+    counts["closed"] = sum(1 for source_id in held if source_id not in returned)
 
     conn.last_fetch_at = now
     conn.last_fetch_error = None

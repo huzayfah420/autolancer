@@ -55,3 +55,23 @@ export const post = <T>(path: string, body?: unknown) =>
   api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 export const put = <T>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });
 export const del = <T>(path: string) => api<T>(path, { method: "DELETE" });
+
+type AssessCounts = { assessed: number; reused: number; unassessed: number; already_current: number };
+
+// A changed profile or policy makes stored assessments stale. This re-assesses the affected
+// jobs straight away (row 8, UC-002 A1/E3) and returns a sentence describing the outcome,
+// or "" when there was nothing to do. Jobs left over stay marked stale on the Jobs page.
+export async function reassessAffected(): Promise<string> {
+  try {
+    const r = await post<AssessCounts>("/jobs/assess");
+    const parts = [];
+    if (r.assessed) parts.push(`${r.assessed} re-assessed by the AI`);
+    if (r.reused) parts.push(`${r.reused} re-ranked without a new AI call`);
+    if (r.unassessed) parts.push(`${r.unassessed} could not be assessed (see the Jobs page)`);
+    return parts.length ? ` Affected jobs: ${parts.join(", ")}.` : "";
+  } catch (e) {
+    // 409 = no policy saved yet, so nothing can be assessed and nothing is stale.
+    if (e instanceof ApiError && e.status === 409) return "";
+    return " Affected jobs could not be re-assessed now; use “Assess” on the Jobs page.";
+  }
+}

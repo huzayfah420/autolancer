@@ -1,7 +1,7 @@
 "use client";
 // Email/password sign-in (row 1). Any failure shows the same generic message (UC-001 E1).
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import Notice from "@/components/Notice";
 import { supabase } from "@/lib/supabase";
 
@@ -11,6 +11,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Next.js keeps this page mounted (hidden) after sign-in. Clear the form when it is hidden,
+  // so the email and password are not still there when the owner signs out.
+  useLayoutEffect(() => () => { setEmail(""); setPassword(""); setFailed(false); setBusy(false); }, []);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -23,6 +27,7 @@ export default function LoginPage() {
     } catch {
       // Never say whether the email exists or what went wrong.
       setFailed(true);
+      setPassword("");
       setBusy(false);
     }
   }

@@ -64,8 +64,10 @@ class SimulatorAdapter:
         except httpx.HTTPStatusError as e:
             code = e.response.status_code
             raise MarketplaceError(f"Marketplace returned HTTP {code}", retryable=code >= 500 or code == 429)
-        except httpx.HTTPError as e:
-            raise MarketplaceError(f"Marketplace unreachable: {type(e).__name__}", retryable=True)
+        except httpx.TimeoutException:
+            raise MarketplaceError("Marketplace unreachable: it did not answer in time", retryable=True)
+        except httpx.HTTPError:
+            raise MarketplaceError("Marketplace unreachable: the connection failed", retryable=True)
         except ValueError:
             raise MarketplaceError("Marketplace sent a response that is not JSON")
 

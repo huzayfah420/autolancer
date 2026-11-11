@@ -66,6 +66,7 @@ def mock_assessment(listing: Listing, profile: Profile) -> dict:
     overlap = [s for s in listing.skills if s.lower() in profile_text]
     fit = min(0.95, 0.55 + 0.15 * len(overlap)) if category in profile.services else 0.15
     effort_mid = max(4.0, round((listing.budget_min + listing.budget_max) / 2 / 60))  # about $60/hour
+    hours_mid = round(effort_mid * 0.8, 1) / 2 + round(effort_mid * 1.3, 1) / 2  # midpoint of the range below
     unclear = bool(re.search(r"\bTBD\b|to be confirmed", listing.description, re.I))
     return {
         "category": category,
@@ -79,8 +80,8 @@ def mock_assessment(listing: Listing, profile: Profile) -> dict:
         "uncertainty": "high" if len(listing.description) < 160 else ("medium" if unclear else "low"),
         "open_questions": ["Please confirm the details marked TBD."] if unclear else [],
         "assumptions": ["Inputs and data are supplied by the client at kickoff", "One round of revisions"],
-        "expected_return_basis": f"About ${(listing.budget_min + listing.budget_max) / 2 / effort_mid:.0f}/hour "
-        f"for roughly {effort_mid:.0f} hours at the listed budget.",
+        "expected_return_basis": f"About ${(listing.budget_min + listing.budget_max) / 2 / hours_mid:.0f}/hour "
+        f"for roughly {hours_mid:.0f} hours at the listed budget.",
     }
 
 

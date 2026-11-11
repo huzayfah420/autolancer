@@ -1,8 +1,8 @@
 "use client";
 // Profile page (rows 3-4): services, skills summary, evidence, and "Draft my profile".
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Notice from "@/components/Notice";
-import { ApiError, del, get, post, put } from "@/lib/api";
+import { ApiError, del, get, post, put, reassessAffected } from "@/lib/api";
 import type { Evidence, Options, Profile } from "@/lib/types";
 
 type Form = Pick<Profile, "services" | "skills_summary" | "evidence">;
@@ -31,17 +31,25 @@ export default function ProfilePage() {
     get<Profile>("/profile").then(load).catch((e) => setMsg({ kind: "error", text: e.message }));
   }, []);
 
+  // Next.js keeps this page mounted (hidden) after navigating away. Drop the loaded profile and
+  // any message when it is hidden, so coming back shows "Loading…" and then fresh data instead
+  // of an old form that the reload could overwrite while the owner is typing.
+  useLayoutEffect(() => () => { setProfile(null); setForm(null); setMsg(null); }, []);
+
   const dirty =
     !!profile && !!form &&
     JSON.stringify(form) !== JSON.stringify({ services: profile.services, skills_summary: profile.skills_summary, evidence: profile.evidence });
 
   // Runs an API action, shows its outcome and reloads the profile it returns.
+  // A new profile version makes every stored assessment stale, so those jobs are re-assessed.
   async function run(action: () => Promise<Profile>, okText: string) {
     setBusy(true);
     setMsg(null);
     try {
-      load(await action());
-      setMsg({ kind: "ok", text: okText });
+      const updated = await action();
+      load(updated);
+      const changed = !!profile && updated.version !== profile.version;
+      setMsg({ kind: "ok", text: okText + (changed ? await reassessAffected() : "") });
     } catch (e) {
       setMsg({ kind: "error", text: e instanceof ApiError ? e.message : "Something went wrong." });
     } finally {

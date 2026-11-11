@@ -65,7 +65,7 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
             <div className="mt-3 flex items-center gap-2">
               <Decision job={job} />
               <Eligible job={job} />
-              {job.score !== null && <span className="text-sm text-slate-600">score {job.score}</span>}
+              {job.score !== null && <span className="text-sm text-slate-600">score {job.score.toFixed(1)}</span>}
             </div>
 
             {job.status === "unassessed" && (

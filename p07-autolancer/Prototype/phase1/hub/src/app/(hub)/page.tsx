@@ -1,7 +1,7 @@
 "use client";
 // Jobs feed (rows 6-9): fetch, assess, ranked list with filters, markers and the detail drawer.
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Decision, Eligible, Markers } from "@/components/Badges";
 import JobDrawer from "@/components/JobDrawer";
 import Notice from "@/components/Notice";
@@ -13,7 +13,7 @@ type Filters = { classification: string; category: string; status: string; eligi
 const NO_FILTERS: Filters = { classification: "", category: "", status: "", eligible_only: false, changes_only: false, q: "" };
 
 type FetchResult = {
-  fetch: { ok: boolean; error: string | null; attempts: number; new?: number; changed?: number; unchanged?: number; filtered_out?: number };
+  fetch: { ok: boolean; error: string | null; attempts: number; new?: number; changed?: number; unchanged?: number; filtered_out?: number; closed?: number };
   assessment: AssessResult | null;
 };
 type AssessResult = { assessed: number; reused: number; unassessed: number; already_current: number };
@@ -42,18 +42,21 @@ export default function JobsPage() {
   );
   useEffect(() => { load(); }, [load]);
 
+  // The page stays mounted (hidden) after navigating away. Filters are kept, but the last
+  // action's message and the open drawer are cleared so they are not shown out of date.
+  useLayoutEffect(() => () => { setMsg(null); setSelected(null); }, []);
+
   async function fetchJobs() {
     setBusy("fetch");
     setMsg(null);
     try {
       const r = await post<FetchResult>("/jobs/fetch");
-      if (!r.fetch.ok) {
-        setMsg({ kind: "warn", text: `Fetch failed after ${r.fetch.attempts} attempt(s): ${r.fetch.error}. The previous list is kept.` });
-      } else {
+      // A failed fetch is reported by the "last fetch failed" notice, which the reloaded feed carries.
+      if (r.fetch.ok) {
         const f = r.fetch;
         setMsg({
           kind: "ok",
-          text: `Fetched${f.attempts > 1 ? ` (succeeded on attempt ${f.attempts})` : ""}: ${f.new} new, ${f.changed} changed, ${f.unchanged} unchanged, ${f.filtered_out} filtered out. ${r.assessment ? assessText(r.assessment) : ""}`,
+          text: `Fetched${f.attempts > 1 ? ` (succeeded on attempt ${f.attempts})` : ""}: ${f.new} new, ${f.changed} changed, ${f.unchanged} unchanged, ${f.filtered_out} filtered out${f.closed ? `, ${f.closed} no longer listed (closed)` : ""}. ${r.assessment ? assessText(r.assessment) : ""}`,
         });
       }
     } catch (e) {
@@ -106,7 +109,11 @@ export default function JobsPage() {
               {busy === "assess" ? "Assessing…" : `Assess ${feed.needs_assessment} job${feed.needs_assessment === 1 ? "" : "s"}`}
             </button>
           )}
-          <button className="btn" disabled={!!busy} onClick={fetchJobs}>{busy === "fetch" ? "Fetching…" : "Fetch jobs"}</button>
+          <button className="btn" disabled={!!busy || !feed?.connected || !feed.policy_version}
+            title={feed && !feed.connected ? "Connect the Marketplace Simulator first" : feed && !feed.policy_version ? "Save a policy first" : undefined}
+            onClick={fetchJobs}>
+            {busy === "fetch" ? "Fetching…" : "Fetch jobs"}
+          </button>
         </div>
       </div>
 
@@ -116,15 +123,17 @@ export default function JobsPage() {
           {feed.policy_version && <> · policy v{feed.policy_version}</>} · profile v{feed.profile_version}
         </p>
       )}
-      {feed && !feed.connected && (
+      {feed && !feed.connected && (feed.connection_status === "unavailable" ? (
+        <Notice kind="warn">The Marketplace Simulator is unavailable, so fetching is off. <Link className="underline" href="/connections">Try the connection again</Link>.</Notice>
+      ) : (
         <Notice kind="info">The Marketplace Simulator is not connected. <Link className="underline" href="/connections">Connect it</Link> to fetch jobs.</Notice>
-      )}
+      ))}
       {feed && !feed.policy_version && (
         <Notice kind="info">No policy yet. <Link className="underline" href="/policy">Save a policy</Link>: the job filters and AI cap come from it.</Notice>
       )}
       {feed?.last_fetch_error && (
         <Notice kind="warn">
-          The last fetch ({when(feed.last_fetch_attempt_at)}) failed after {feed.last_fetch_attempts} attempt(s): {feed.last_fetch_error}. Showing the list from {when(feed.last_fetch_at)}.
+          The last fetch ({when(feed.last_fetch_attempt_at)}) failed after {feed.last_fetch_attempts} {feed.last_fetch_attempts === 1 ? "attempt" : "attempts"}: {feed.last_fetch_error}. The previous list is kept, as of {when(feed.last_fetch_at)}.
         </Notice>
       )}
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
@@ -139,7 +148,7 @@ export default function JobsPage() {
         </select>
         <select className="input w-36" value={filters.category} onChange={(e) => set({ category: e.target.value })}>
           <option value="">All categories</option>
-          {["finance", "software", "data", "research", "writing"].map((c) => <option key={c} value={c}>{c}</option>)}
+          {["finance", "software", "data", "research", "writing"].map((c) => <option key={c} value={c}>{c[0].toUpperCase() + c.slice(1)}</option>)}
         </select>
         <select className="input w-40" value={filters.status} onChange={(e) => set({ status: e.target.value })}>
           <option value="">Any status</option>
@@ -158,7 +167,9 @@ export default function JobsPage() {
       {!feed ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : feed.items.length === 0 ? (
-        <p className="text-sm text-slate-500">No jobs to show. {feed.last_fetch_at ? "Try clearing the filters." : "Press “Fetch jobs” to load listings."}</p>
+        <p className="text-sm text-slate-500">No jobs to show. {feed.last_fetch_at ? "Try clearing the filters."
+          : feed.connected && feed.policy_version ? "Press “Fetch jobs” to load listings."
+          : "Fetching is off until the simulator is connected and a policy is saved."}</p>
       ) : (
         <div className="card overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
@@ -170,7 +181,7 @@ export default function JobsPage() {
             <tbody>
               {feed.items.map((j) => (
                 <tr key={j.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setSelected(j.id)}>
-                  <td className="px-3 py-2 font-mono">{j.score ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono">{j.score?.toFixed(1) ?? "—"}</td>
                   <td className="px-3 py-2">
                     {/* A real button, so the drawer opens from the keyboard too (NFR-010). */}
                     <button type="button" className="text-left font-medium hover:underline"

@@ -1,8 +1,8 @@
 "use client";
 // Policy page (row 5): each valid save creates a new version; the API rejects invalid values.
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Notice from "@/components/Notice";
-import { get, post } from "@/lib/api";
+import { get, post, reassessAffected } from "@/lib/api";
 import { money, when } from "@/lib/format";
 import type { Options, Policy, PolicyFields } from "@/lib/types";
 
@@ -52,6 +52,11 @@ export default function PolicyPage() {
     get<History>("/policy").then(apply).catch((e) => setMsg({ kind: "error", text: e.message }));
   }, []);
 
+  // Next.js keeps this page mounted (hidden) after navigating away. Drop the loaded policy and
+  // any message when it is hidden, so coming back shows "Loading…" and then fresh data instead
+  // of an old form that the reload could overwrite while the owner is typing.
+  useLayoutEffect(() => () => { setData(null); setMsg(null); }, []);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -60,10 +65,12 @@ export default function PolicyPage() {
       const body = { ...form, excluded_keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean) };
       const saved = await post<Policy>("/policy", body);
       apply(await get<History>("/policy"));
-      setMsg({ kind: "ok", text: `Saved as version ${saved.version}. Affected jobs are queued for re-assessment.` });
+      setMsg({ kind: "ok", text: `Saved as version ${saved.version}.${await reassessAffected()}` });
     } catch (err) {
       // E3: the previous version stays active; show why this one was rejected.
-      setMsg({ kind: "error", text: `Not saved. ${(err as Error).message}` });
+      let reason = (err as Error).message;
+      NUMBERS.forEach(({ field, label }) => { reason = reason.replace(`${field}:`, `${label}:`); });
+      setMsg({ kind: "error", text: `Not saved. ${reason}` });
     } finally {
       setBusy(false);
     }
@@ -75,7 +82,7 @@ export default function PolicyPage() {
   if (!options || !data) return <p className="text-sm text-slate-500">Loading…</p>;
 
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="mb-4 flex items-baseline gap-3">
         <h1 className="text-2xl font-semibold">Autonomy policy</h1>
         <span className="text-sm text-slate-500">
@@ -84,7 +91,7 @@ export default function PolicyPage() {
       </div>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
-      <form className="card space-y-5" onSubmit={save}>
+      <form className="card max-w-3xl space-y-5" onSubmit={save}>
         <fieldset>
           <legend className="label">Allowed actions</legend>
           {Object.entries(options.allowed_actions).map(([key, text]) => (

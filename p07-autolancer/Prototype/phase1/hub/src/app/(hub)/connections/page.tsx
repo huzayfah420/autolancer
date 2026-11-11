@@ -1,6 +1,6 @@
 "use client";
 // Connections page (row 2): connect the Marketplace Simulator and see its status and operations.
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Notice from "@/components/Notice";
 import { get, put } from "@/lib/api";
 import { when } from "@/lib/format";
@@ -20,6 +20,9 @@ export default function ConnectionsPage() {
   useEffect(() => {
     get<Connection[]>("/connections").then((c) => setConn(c[0])).catch((e) => setError(e.message));
   }, []);
+
+  // The page stays mounted (hidden) after navigating away; clear it so a return shows fresh status.
+  useLayoutEffect(() => () => { setConn(null); setError(null); }, []);
 
   // Turning it on asks the simulator for its capabilities; turning it off leaves it disconnected.
   async function setEnabled(enabled: boolean) {
