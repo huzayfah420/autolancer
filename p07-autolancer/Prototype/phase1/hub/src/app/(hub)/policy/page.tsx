@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Notice from "@/components/Notice";
 import { get, post } from "@/lib/api";
-import { money, when } from "@/lib/format";
+import { money, usd, when } from "@/lib/format";
 import type { Options, Policy, PolicyFields } from "@/lib/types";
 
 const DEFAULTS: PolicyFields = {
@@ -24,7 +24,7 @@ const NUMBERS: { field: keyof PolicyFields; label: string; step: string }[] = [
   { field: "min_job_budget", label: "Minimum job budget (USD)", step: "1" },
   { field: "daily_proposal_limit", label: "Daily proposal limit", step: "1" },
   { field: "workload_limit", label: "Workload limit (active projects)", step: "1" },
-  { field: "daily_ai_cap_usd", label: "Daily AI spending cap (USD)", step: "0.01" },
+  { field: "daily_ai_cap_usd", label: "Daily AI spending cap (USD)", step: "any" },
   { field: "min_deadline_days", label: "Minimum days to deadline (0 = no limit)", step: "1" },
 ];
 
@@ -151,7 +151,7 @@ export default function PolicyPage() {
                   <td className="px-3 py-2">{money(p.min_job_budget)}</td>
                   <td className="px-3 py-2">{p.daily_proposal_limit}</td>
                   <td className="px-3 py-2">{p.workload_limit}</td>
-                  <td className="px-3 py-2">${p.daily_ai_cap_usd.toFixed(2)}</td>
+                  <td className="px-3 py-2">{usd(p.daily_ai_cap_usd)}</td>
                   <td className="px-3 py-2">{p.min_deadline_days || "none"}</td>
                   <td className="px-3 py-2">{p.allowed_actions.join(", ") || "none"}</td>
                   <td className="px-3 py-2">{p.review_conditions.join(", ") || "none"}</td>

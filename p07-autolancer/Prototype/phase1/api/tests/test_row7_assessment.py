@@ -36,6 +36,8 @@ def test_over_cap_jobs_become_unassessed(client, owner_a, session_factory):
     unassessed = [j for j in items if j["status"] == "unassessed"]
     assert len(unassessed) == 25
     assert all("cap reached" in j["unassessed_reason"] for j in unassessed)
+    # The cap is shown in full, so a small cap never reads as "$0.0020 of $0.00".
+    assert all("($0.0020 of $0.0025)" in j["unassessed_reason"] for j in unassessed)
     assert not any(j["pursue_eligible"] for j in unassessed)
 
     # Retry stays unassessed while capped, then works once the cap is raised.

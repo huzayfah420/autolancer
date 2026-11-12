@@ -10,9 +10,24 @@ const CLASS_STYLE: Record<string, string> = {
 export function Decision({ job }: { job: JobItem }) {
   if (job.status === "unassessed") return <span className="badge bg-red-100 text-red-800">unassessed</span>;
   if (job.status === "pending") return <span className="badge bg-slate-100 text-slate-600">not assessed yet</span>;
+  // "pursue" only stays green when the system may act on it. A closed listing is struck
+  // through, and one the rules hold for the owner is shown as needing review.
+  const held = job.classification === "pursue" && job.status === "assessed" && !job.pursue_eligible && !job.is_closed;
+  const style = job.is_closed
+    ? "bg-slate-100 text-slate-500 line-through"
+    : held
+      ? "bg-amber-100 text-amber-900"
+      : (CLASS_STYLE[job.classification ?? ""] ?? "");
+  const title = job.is_closed
+    ? "Decision from before the listing closed; no longer actionable"
+    : held
+      ? "Suitable, but held for your review. Open the job for the reason."
+      : undefined;
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={`badge ${CLASS_STYLE[job.classification ?? ""] ?? ""}`}>{job.classification}</span>
+      <span className={`badge whitespace-nowrap ${style}`} title={title}>
+        {job.classification}{held && " · needs review"}
+      </span>
       {job.status === "stale" && <span className="badge bg-orange-100 text-orange-800" title="Listing, profile or policy changed since this assessment">stale</span>}
     </span>
   );

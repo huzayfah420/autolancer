@@ -331,8 +331,24 @@ files, relative to `Prototype/phase1/`:
 No database columns were added, so the code runs against an existing Phase 1 database.
 
 Verification: `pytest` in `api/` gives 105 passed; in `hub/`, `eslint`,
-`tsc --noEmit` and `next build` are clean. The hub changes were not exercised in a
-browser, and nothing was run against a real model, Supabase or a deployed host.
+`tsc --noEmit` and `next build` are clean. The basic flows and every fix that has a
+visible effect were then checked in headless Chromium against a local deployment (SQLite,
+mock model). Sign-in was checked against a local stand-in for Supabase Auth, so real
+Supabase sign-in and MFA enrolment remain untested, as does any real model or deployed
+host. Fixes 5 and 8 have no visible effect and rest on unit tests only.
+
+That browser pass found four more problems, fixed afterwards and re-checked the same way:
+
+- **Sign-in after sign-out.** The login page stays mounted behind the hub and kept its
+  "Signing in…" state, so a second sign-in needed a page reload (`login/page.tsx`).
+- **Small AI caps.** A cap of 0.0025 was shown as "$0.00" in the unassessed reason and the
+  policy history, which read as spend over the cap (`assessment.py`, `policy/page.tsx`,
+  `lib/format.ts`).
+- **Decision badge.** Closed jobs and jobs held for review still showed a green "pursue".
+  Closed ones are now struck through and held ones read "pursue · needs review"
+  (`Badges.tsx`).
+- **Drawer focus.** Tab could leave the open drawer and Escape dropped focus on the page
+  body. Tab now stays inside and focus returns to the job title (`JobDrawer.tsx`).
 
 New settings (all optional): `LLM_CALL_RESERVE_USD`, `LLM_MAX_OUTPUT_TOKENS`,
 `LLM_FALLBACK_USD_PER_1K_TOKENS`, `REQUIRE_MFA`, `SIMULATOR_CHAOS_TOKEN`.

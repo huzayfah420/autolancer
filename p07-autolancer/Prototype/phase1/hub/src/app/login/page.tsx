@@ -19,10 +19,14 @@ export default function LoginPage() {
     try {
       const { error } = await supabase().auth.signInWithPassword({ email, password });
       if (error) throw error;
+      // This page can stay mounted while the hub is shown, so leave it ready for the next
+      // sign-in: no remembered password and no "Signing in…" state.
+      setPassword("");
       router.replace("/");
     } catch {
       // Never say whether the email exists or what went wrong.
       setFailed(true);
+    } finally {
       setBusy(false);
     }
   }

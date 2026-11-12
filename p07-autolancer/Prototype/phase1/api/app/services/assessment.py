@@ -168,7 +168,7 @@ def assess_listing(db: Session, owner_id: uuid.UUID, listing: Listing, profile: 
     if ai is None:
         if cap_reached(db, owner_id):
             return unassessed(
-                f"Daily AI spending cap reached (${spent_today(db, owner_id):.4f} of ${daily_cap(db, owner_id):.2f})."
+                f"Daily AI spending cap reached (${spent_today(db, owner_id):.4f} of ${daily_cap(db, owner_id):.4f})."
             )
         try:
             ai, usage = complete_json(

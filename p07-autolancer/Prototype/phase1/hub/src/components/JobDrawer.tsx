@@ -1,6 +1,6 @@
 "use client";
 // Side drawer for one job: the AI's reasons, the rule decision, score breakdown and versions.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Notice from "@/components/Notice";
 import { Decision, Eligible, Markers } from "@/components/Badges";
 import { get, post } from "@/lib/api";
@@ -26,12 +26,35 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
     get<JobDetail>(`/jobs/${id}`).then(setJob).catch((e) => setError(e.message));
   }, [id]);
 
-  // Escape closes the drawer, and focus moves into it when it opens (NFR-010).
+  const panel = useRef<HTMLElement>(null);
+  // What had focus when the drawer was opened. Read on first render, because the Close
+  // button's autoFocus moves focus before any effect runs.
+  const [opener] = useState(() => (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null)));
+  // Kept in a ref so the effect below runs once per drawer, not on every parent render.
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; });
+
+  // Modal behaviour (NFR-010): Escape closes, Tab stays inside the drawer, and focus goes
+  // back to whatever opened it (the job title) when it closes.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return close.current();
+      if (e.key !== "Tab" || !panel.current) return;
+      const items = Array.from(
+        panel.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => !el.hasAttribute("disabled"));
+      if (!items.length) return e.preventDefault();
+      const first = items[0], last = items[items.length - 1];
+      const inside = panel.current.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [opener]);
 
   async function retry() {
     setBusy(true);
@@ -49,7 +72,7 @@ export default function JobDrawer({ id, onClose, onChanged }: { id: number; onCl
   const ai = job?.ai_output;
   return (
     <div className="fixed inset-0 z-20 flex justify-end bg-black/30" onClick={onClose}>
-      <aside role="dialog" aria-modal="true" aria-label={job?.title ?? "Job details"}
+      <aside ref={panel} role="dialog" aria-modal="true" aria-label={job?.title ?? "Job details"}
         className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <button autoFocus className="float-right text-sm text-slate-500 hover:text-slate-900" onClick={onClose}>Close ✕</button>
         {error && <Notice kind="error">{error}</Notice>}
